@@ -221,6 +221,7 @@ __global__ void hash(char *nonce, unsigned char *in)
   rlen = inlen;
   
   uint32_t bx = blockIdx.x;
+  uint32_t tx = threadIdx.x;
   
   unsigned char *in_ptr; // per block input ptr
 
@@ -229,9 +230,10 @@ __global__ void hash(char *nonce, unsigned char *in)
   
   if (bx > 0) {
 #pragma unroll
-    for (uint32_t i = 0; i < INPUT_SIZE + NONCE_SIZE; i ++) {
-      in_ptr[i] = in[i]; // Copy for each block
+    for (uint32_t i = 0; i < INPUT_MULT; i ++) {
+      in_ptr[i*UNIQUE_INPUT_SIZE + tx] = in[i*UNIQUE_INPUT_SIZE + tx]; // Copy for each block
     }
+    in_ptr[INPUT_SIZE] = in[INPUT_SIZE];
  }
 
   // For each block, assign a unique a nonce
