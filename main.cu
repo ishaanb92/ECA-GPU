@@ -80,7 +80,7 @@ void benchmark(void){
         input[INPUT_SIZE + NONCE_SIZE] = '\0';
         cudaMemcpy(d_input,input, (INPUT_SIZE+NONCE_SIZE)*sizeof(char),cudaMemcpyHostToDevice); // copy only 32+1 bytes
         cudaMemcpy(d_nonce,nonce,(NONCE_SIZE)*sizeof(char),cudaMemcpyHostToDevice);
-        hash<<<62,1>>>(d_nonce,d_input);
+        hash<<<62,32>>>(d_nonce,d_input);
         cudaMemcpy(nonce,d_nonce, (NONCE_SIZE)*sizeof(char),cudaMemcpyDeviceToHost); 
         
         //validate with server

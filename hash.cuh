@@ -73,8 +73,8 @@ __device__ unsigned char nonce_array[62]={'a','b','c','d','e','f','g','h','i','j
 
 __device__ void mixbytes(u32 a[8][COLWORDS], u32 b[8], int s)
 {
-  int i;
-  u32 t0, t1, t2;
+  __shared__ int i;
+  __shared__ u32 t0, t1, t2;
 
   for (i=0; i<8; i++)
     b[i] = a[i][s];
@@ -125,9 +125,9 @@ __device__ void mixbytes(u32 a[8][COLWORDS], u32 b[8], int s)
 
 __device__ void permutation(u32 *x, int q)
 {
- __align__(8) u32 tmp[8];
-  u32 constant;
-  int i, j;
+ __shared__ __align__(8) u32 tmp[8];
+  __shared__ u32 constant;
+  __shared__ int i, j;
   for(constant=0; constant<(0x01010101*ROUNDS); constant+=0x01010101)
   {
     if (q==0)
@@ -215,13 +215,14 @@ __global__ void hash(char *nonce, unsigned char *in)
   __shared__ __align__(8) u32 ctx[STATEWORDS];
   __shared__ __align__(8) u32 buffer[STATEWORDS];
 
-  unsigned long long inlen = INPUT_MULT*UNIQUE_INPUT_SIZE + NONCE_SIZE;
-  unsigned long long rlen = inlen;
- 
+  __shared__ unsigned long long inlen; 
+  __shared__ unsigned long long rlen;
+  inlen = INPUT_MULT*UNIQUE_INPUT_SIZE + NONCE_SIZE;
+  rlen = inlen;
   
   uint32_t bx = blockIdx.x;
   
-  __shared__ unsigned char *in_ptr; // per block input ptr
+  unsigned char *in_ptr; // per block input ptr
 
   in_ptr = &(in[bx*(INPUT_SIZE+NONCE_SIZE)]);
 
