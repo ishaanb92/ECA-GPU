@@ -163,12 +163,7 @@ __device__ void permutation(u32 *x, int q)
 
 __device__ void memxor(u32* dest, const u32* src, u32 n)
 {
-  while(n--)
-  {
-    *dest ^= *src;
-    dest++;
-    src++;
-  }
+  dest[threadIdx.x] ^= src[threadIdx.x];
 }
 
 struct state {
@@ -319,16 +314,12 @@ __global__ void hash(char *nonce, unsigned char *in)
   for (i = STATEBYTES-CRYPTO_BYTES; i < STATEBYTES; i++)
     out[i-(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(i)];
 
-/*
-  // Copy the per-block output
-  for (uint32_t k=0; k < 64; k++)
-    output[bx*64 + k] = out[k];
-*/
 
-
+  if (tx < 1) {
   // For each block check if output hash has a coin
-  if (check_hash(&(out[0]))) {
-    nonce[0] = nonce_array[bx]; // Assign the winning nonce
+    if (check_hash(&(out[0]))) {
+      nonce[0] = nonce_array[bx]; // Assign the winning nonce
+    }
   }
 
 }
