@@ -232,12 +232,10 @@ __global__ void hash(char *nonce, unsigned char *in)
 
   base[tx] = in[tx+1]; // Copy base string per block
   
-  if (bx > 0) {
 #pragma unroll
-    for (uint32_t i = 0; i < INPUT_MULT; i ++) {
-      in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
-    }
- }
+  for (uint32_t i = 0; i < INPUT_MULT; i ++) {
+    in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
+  }
 
   // For each block, assign a unique a nonce
   in_ptr[0] = nonce_array[bx];

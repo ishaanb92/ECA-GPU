@@ -48,7 +48,7 @@ bool check_hash(char* hash){
 void benchmark(void){
     
     // + 1 for termination '\0'
-    char input[INPUT_SIZE+NONCE_SIZE+1];
+    char input[UNIQUE_INPUT_SIZE +NONCE_SIZE +1];
     
     //position of repeated string in input
     char* base = &(input[NONCE_SIZE]);
@@ -77,8 +77,8 @@ void benchmark(void){
         nonce[NONCE_SIZE]='\0';
 
         input[0] = nonce[0];
-        input[INPUT_SIZE + NONCE_SIZE] = '\0';
-        cudaMemcpy(d_input,input, (INPUT_SIZE+NONCE_SIZE)*sizeof(char),cudaMemcpyHostToDevice); // copy only 32+1 bytes
+        input[UNIQUE_INPUT_SIZE + NONCE_SIZE] = '\0';
+        cudaMemcpy(d_input,input, (UNIQUE_INPUT_SIZE+NONCE_SIZE)*sizeof(char),cudaMemcpyHostToDevice); // copy only 32+1 bytes
         cudaMemcpy(d_nonce,nonce,(NONCE_SIZE)*sizeof(char),cudaMemcpyHostToDevice);
         hash<<<62,32>>>(d_nonce,d_input);
         cudaMemcpy(nonce,d_nonce, (NONCE_SIZE)*sizeof(char),cudaMemcpyDeviceToHost); 
