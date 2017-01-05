@@ -60,7 +60,6 @@ void benchmark(void){
 
     unsigned char *d_input;
     char *d_nonce;
-    unsigned char *d_output;
 
     while(true){
 
