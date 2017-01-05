@@ -127,7 +127,7 @@ __device__ void permutation(u32 *x, int q)
 {
  __shared__ __align__(8) u32 tmp[8];
   __shared__ u32 constant;
-  __shared__ int i, j;
+  __shared__ int i;
   uint32_t tx = threadIdx.x;
   for(constant=0; constant<(0x01010101*ROUNDS); constant+=0x01010101)
   {
@@ -155,8 +155,9 @@ __device__ void permutation(u32 *x, int q)
       __syncthreads();
     }
 
-    for (j=0; j<COLWORDS; j++)
-      mixbytes((u32(*)[COLWORDS])x, tmp, j);
+    if (tx < COLWORDS)
+      mixbytes((u32(*)[COLWORDS])x, tmp,tx);
+    __syncthreads();
   }
 }
 
