@@ -128,26 +128,31 @@ __device__ void permutation(u32 *x, int q)
  __shared__ __align__(8) u32 tmp[8];
   __shared__ u32 constant;
   __shared__ int i, j;
+  uint32_t tx = threadIdx.x;
   for(constant=0; constant<(0x01010101*ROUNDS); constant+=0x01010101)
   {
     if (q==0)
     {
-      for (j=0; j<COLWORDS; j++)
-        x[j] ^= columnconstant[j]^constant;
+      if (tx < COLWORDS)
+        x[tx] ^= columnconstant[tx]^constant;
+      __syncthreads();
     }
     else
     {
-      for(i=0;i<STATEWORDS;i++)
-        x[i] = ~x[i];
-      for (j=0; j<COLWORDS; j++)
-        x[STATEWORDS-COLWORDS+j] ^= columnconstant[j]^constant;
+      x[tx] = ~x[tx];
+      __syncthreads();
+      if (tx < COLWORDS)
+        x[STATEWORDS-COLWORDS+tx] ^= columnconstant[tx]^constant;
+      __syncthreads();
     }
-    for (i=0; i<8; i++)
-    {
-      for (j=0; j<COLWORDS; j++)
-        tmp[j] = x[i*COLWORDS+j];
-      for (j=0; j<STATECOLS; j++)
-        ((u8*)x)[i*STATECOLS+j] = S[((u8*)tmp)[(j+shiftvalues[q][i])%STATECOLS]];
+    for (i=0; i<8; i++) {
+      if (tx < COLWORDS)
+        tmp[tx] = x[i*COLWORDS+tx];
+      __syncthreads();
+      
+      if (tx < STATECOLS)
+        ((u8*)x)[i*STATECOLS + tx] = S[((u8*)tmp)[(tx +shiftvalues[q][i])%STATECOLS]];
+      __syncthreads();
     }
 
     for (j=0; j<COLWORDS; j++)
@@ -241,7 +246,7 @@ __global__ void hash(char *nonce, unsigned char *in)
   // For each block, assign a unique a nonce
   in_ptr[0] = nonce_array[bx];
 
-  __syncthreads();
+  //__syncthreads();
 
   __shared__ char out[64]; // Output hash
 
@@ -256,11 +261,16 @@ __global__ void hash(char *nonce, unsigned char *in)
   // Declare a pointer to block_input
 
   /* set inital value */
-#pragma unroll
+#if 0
   for(i=0;i<STATEWORDS;i++)
     ctx[i] = 0;
-  ((u8*)ctx)[BYTESLICE(STATEBYTES-2)] = ((CRYPTO_BYTES*8)>>8)&0xff;
-  ((u8*)ctx)[BYTESLICE(STATEBYTES-1)] = (CRYPTO_BYTES*8)&0xff;
+#endif
+  ctx[tx] = 0;
+
+  if (tx < 1) {
+    ((u8*)ctx)[BYTESLICE(STATEBYTES-2)] = ((CRYPTO_BYTES*8)>>8)&0xff;
+    ((u8*)ctx)[BYTESLICE(STATEBYTES-1)] = (CRYPTO_BYTES*8)&0xff;
+  }
 
   /* iterate compression function */
   while(s.last_padding_block == 0)
