@@ -219,6 +219,8 @@ __global__ void hash(char *nonce, unsigned char *in)
   __shared__ unsigned long long rlen;
   inlen = INPUT_MULT*UNIQUE_INPUT_SIZE + NONCE_SIZE;
   rlen = inlen;
+
+  __shared__ unsigned char base[UNIQUE_INPUT_SIZE];
   
   uint32_t bx = blockIdx.x;
   uint32_t tx = threadIdx.x;
@@ -227,17 +229,19 @@ __global__ void hash(char *nonce, unsigned char *in)
 
   in_ptr = &(in[bx*(INPUT_SIZE+NONCE_SIZE)]);
 
+  base[tx] = in[tx+1]; // Copy base string per block
   
   if (bx > 0) {
 #pragma unroll
     for (uint32_t i = 0; i < INPUT_MULT; i ++) {
-      in_ptr[i*UNIQUE_INPUT_SIZE + tx] = in[i*UNIQUE_INPUT_SIZE + tx]; // Copy for each block
+      in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
     }
-    in_ptr[INPUT_SIZE] = in[INPUT_SIZE];
  }
 
   // For each block, assign a unique a nonce
   in_ptr[0] = nonce_array[bx];
+
+  __syncthreads();
 
   __shared__ char out[64]; // Output hash
 
