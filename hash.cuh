@@ -233,7 +233,7 @@ __global__ void hash(char *nonce, unsigned char *in)
   in_ptr = &(in[bx*(INPUT_SIZE+NONCE_SIZE)]);
 
   base[tx] = in[tx+1]; // Copy base string per block
-  
+  __syncthreads(); 
 #pragma unroll
   for (uint32_t i = 0; i < INPUT_MULT; i ++) {
     in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
@@ -266,6 +266,7 @@ __global__ void hash(char *nonce, unsigned char *in)
     ((u8*)ctx)[BYTESLICE(STATEBYTES-2)] = ((CRYPTO_BYTES*8)>>8)&0xff;
     ((u8*)ctx)[BYTESLICE(STATEBYTES-1)] = (CRYPTO_BYTES*8)&0xff;
   }
+  __syncthreads();
 
   /* iterate compression function */
   while(s.last_padding_block == 0)
@@ -311,9 +312,14 @@ __global__ void hash(char *nonce, unsigned char *in)
   memxor(ctx, buffer, STATEWORDS);
 
   /* return truncated hash value */
+#if 0
 #pragma unroll
   for (i = STATEBYTES-CRYPTO_BYTES; i < STATEBYTES; i++)
     out[i-(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(i)];
+#endif
+    for (i = 0; i < 2; i++)
+      out[tx + i*(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(tx + i*(STATEBYTES - CRYPTO_BYTES) + (STATEBYTES-CRYPTO_BYTES))];
+    __syncthreads();
 
 /*
   // Copy the per-block output
