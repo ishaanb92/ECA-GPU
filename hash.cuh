@@ -127,7 +127,7 @@ __device__ void permutation(u32 *x, int q)
 {
  __shared__ __align__(8) u32 tmp[8];
   __shared__ u32 constant;
-  __shared__ int i, j;
+  __shared__ int i;
   uint32_t tx = threadIdx.x;
   for(constant=0; constant<(0x01010101*ROUNDS); constant+=0x01010101)
   {
@@ -155,19 +155,15 @@ __device__ void permutation(u32 *x, int q)
       __syncthreads();
     }
 
-    for (j=0; j<COLWORDS; j++)
-      mixbytes((u32(*)[COLWORDS])x, tmp, j);
+    if (tx < COLWORDS)
+      mixbytes((u32(*)[COLWORDS])x, tmp, tx);
+    __syncthreads();
   }
 }
 
 __device__ void memxor(u32* dest, const u32* src, u32 n)
 {
-  while(n--)
-  {
-    *dest ^= *src;
-    dest++;
-    src++;
-  }
+    dest[threadIdx.x] ^= src[threadIdx.x];
 }
 
 struct state {
@@ -178,27 +174,29 @@ struct state {
 
 __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned long long inlen)
 {
-  int i;
-  for (i = 0; i < s.bytes_in_block; i++)
-    buffer[BYTESLICE(i)] = in[i];
+  __shared__ int i;
+  if (threadIdx.x < 1) {
+    for (i = 0; i < s.bytes_in_block; i++)
+      buffer[BYTESLICE(i)] = in[i];
 
-  if (s.bytes_in_block != STATEBYTES)
-  {
-    if (s.first_padding_block)
+    if (s.bytes_in_block != STATEBYTES)
     {
-      buffer[BYTESLICE(i)] = 0x80;
-      i++;
-    }
+      if (s.first_padding_block)
+      {
+        buffer[BYTESLICE(i)] = 0x80;
+        i++;
+      }
 
-    for(;i<STATEBYTES;i++)
-      buffer[BYTESLICE(i)] = 0;
+      for(;i<STATEBYTES;i++)
+        buffer[BYTESLICE(i)] = 0;
 
-    if (s.last_padding_block)
-    {
-      inlen /= STATEBYTES;
-      inlen += (s.first_padding_block==s.last_padding_block) ? 1 : 2;
-      for(i=STATEBYTES-8;i<STATEBYTES;i++)
-        buffer[BYTESLICE(i)] = (inlen >> 8*(STATEBYTES-i-1)) & 0xff;
+      if (s.last_padding_block)
+      {
+        inlen /= STATEBYTES;
+        inlen += (s.first_padding_block==s.last_padding_block) ? 1 : 2;
+        for(i=STATEBYTES-8;i<STATEBYTES;i++)
+          buffer[BYTESLICE(i)] = (inlen >> 8*(STATEBYTES-i-1)) & 0xff;
+      }
     }
   }
 }
@@ -236,17 +234,14 @@ __global__ void hash(char *nonce, unsigned char *in)
 
   base[tx] = in[tx+1]; // Copy base string per block
   
-  if (bx > 0) {
 #pragma unroll
-    for (uint32_t i = 0; i < INPUT_MULT; i ++) {
-      in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
-    }
- }
+  for (uint32_t i = 0; i < INPUT_MULT; i ++) {
+    in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
+  }
 
   // For each block, assign a unique a nonce
   in_ptr[0] = nonce_array[bx];
 
-  //__syncthreads();
 
   __shared__ char out[64]; // Output hash
 
@@ -295,10 +290,12 @@ __global__ void hash(char *nonce, unsigned char *in)
 
     /* compression function */
     setmessage((u8*)buffer, in_ptr , s, inlen);
+    __syncthreads();
     memxor(buffer, ctx, STATEWORDS);
     permutation(buffer, 0);
     memxor(ctx, buffer, STATEWORDS);
     setmessage((u8*)buffer, in_ptr, s, inlen);
+    __syncthreads();
     permutation(buffer, 1);
     memxor(ctx, buffer, STATEWORDS);
 
@@ -306,10 +303,10 @@ __global__ void hash(char *nonce, unsigned char *in)
     in_ptr  += STATEBYTES;
   }
 
-#pragma unroll
   /* output transformation */
-  for (i=0; i<STATEWORDS; i++)
-    buffer[i] = ctx[i];
+  buffer[tx] = ctx[tx];
+  __syncthreads();
+
   permutation(buffer, 0);
   memxor(ctx, buffer, STATEWORDS);
 
@@ -326,8 +323,11 @@ __global__ void hash(char *nonce, unsigned char *in)
 
 
   // For each block check if output hash has a coin
-  if (check_hash(&(out[0]))) {
-    nonce[0] = nonce_array[bx]; // Assign the winning nonce
+  if (tx < 1) {
+    if (check_hash(&(out[0]))) {
+      nonce[0] = nonce_array[bx]; // Assign the winning nonce
+    }
   }
+  __syncthreads();
 
 }

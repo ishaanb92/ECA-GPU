@@ -16,12 +16,12 @@ bool requestInput(char* hash){
         return false;
     }
 
-    //duplicate input to get large input string
+#if 0    //duplicate input to get large input string
     for(int j=0;j<INPUT_MULT;j++)
         for(int i=0;i<UNIQUE_INPUT_SIZE;i++)
             hash[j*UNIQUE_INPUT_SIZE+i]=hash[i];
     hash[INPUT_SIZE]='\0';//terminate input string
-
+#endif
     return true;
 }
 
