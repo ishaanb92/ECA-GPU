@@ -204,6 +204,7 @@ __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned lo
       if (tx < 8)
         buffer[BYTESLICE(tx + (STATEBYTES-8))] = (inlen >> 8*(STATEBYTES-(tx +(STATEBYTES-8)) -1)) & 0xff;
     }
+    __syncthreads();
   }
 
 }
