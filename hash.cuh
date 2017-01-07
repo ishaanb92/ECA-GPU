@@ -175,28 +175,39 @@ struct state {
 __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned long long inlen)
 {
   __shared__ int i;
-  if (threadIdx.x < 1) {
-    for (i = 0; i < s.bytes_in_block; i++)
-      buffer[BYTESLICE(i)] = in[i];
+  uint32_t tx = threadIdx.x;
 
-    if (s.bytes_in_block != STATEBYTES)
+#if 0
+  for (i = 0; i < s.bytes_in_block; i++)
+    buffer[BYTESLICE(i)] = in[i];
+#endif
+  
+  if (!s.first_padding_block && !s.last_padding_block) { // rlen > STATEBYTES
+    for (uint32_t j = 0; j < STATEBYTES/32 ; j ++)
+      buffer[BYTESLICE(j*32 + tx)] = in[j*32 + tx];
+  }
+  else
+    buffer[BYTESLICE(0)] = in[0];
+
+  i = s.bytes_in_block;
+
+  if (s.bytes_in_block != STATEBYTES)
+  {
+    if (s.first_padding_block)
     {
-      if (s.first_padding_block)
-      {
-        buffer[BYTESLICE(i)] = 0x80;
-        i++;
-      }
+      buffer[BYTESLICE(i)] = 0x80;
+      i++;
+    }
 
-      for(;i<STATEBYTES;i++)
-        buffer[BYTESLICE(i)] = 0;
+    for(;i<STATEBYTES;i++)
+      buffer[BYTESLICE(i)] = 0;
 
-      if (s.last_padding_block)
-      {
-        inlen /= STATEBYTES;
-        inlen += (s.first_padding_block==s.last_padding_block) ? 1 : 2;
-        for(i=STATEBYTES-8;i<STATEBYTES;i++)
-          buffer[BYTESLICE(i)] = (inlen >> 8*(STATEBYTES-i-1)) & 0xff;
-      }
+    if (s.last_padding_block)
+    {
+      inlen /= STATEBYTES;
+      inlen += (s.first_padding_block==s.last_padding_block) ? 1 : 2;
+      if (tx < 8)
+        buffer[BYTESLICE(tx + (STATEBYTES-8))] = (inlen >> 8*(STATEBYTES-(tx +(STATEBYTES-8)) -1)) & 0xff;
     }
   }
 }
@@ -256,11 +267,9 @@ __global__ void hash(char *nonce, unsigned char *in)
   // Declare a pointer to block_input
 
   /* set inital value */
-#if 0
-  for(i=0;i<STATEWORDS;i++)
-    ctx[i] = 0;
-#endif
+  
   ctx[tx] = 0;
+  __syncthreads();
 
   if (tx < 1) {
     ((u8*)ctx)[BYTESLICE(STATEBYTES-2)] = ((CRYPTO_BYTES*8)>>8)&0xff;
