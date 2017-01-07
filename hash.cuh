@@ -177,22 +177,17 @@ __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned lo
   __shared__ int i;
   uint32_t tx = threadIdx.x;
 
-#if 0
-  for (i = 0; i < s.bytes_in_block; i++)
-    buffer[BYTESLICE(i)] = in[i];
-#endif
-  
-  if (!s.first_padding_block && !s.last_padding_block) { // rlen > STATEBYTES
-    for (uint32_t j = 0; j < STATEBYTES/32 ; j ++)
-      buffer[BYTESLICE(j*32 + tx)] = in[j*32 + tx];
-  }
-  else
-    buffer[BYTESLICE(0)] = in[0];
-
   i = s.bytes_in_block;
 
-  if (s.bytes_in_block != STATEBYTES)
-  {
+  if (!s.first_padding_block && !s.last_padding_block) { // rlen > STATEBYTES, s.bytes_in_block = STATEBYTES
+    for (uint32_t j = 0; j < STATEBYTES/32 ; j ++)
+      buffer[BYTESLICE(j*32 + tx)] = in[j*32 + tx];
+  __syncthreads();
+  }
+  else { // s.bytes_in_block = 1
+    
+    buffer[BYTESLICE(0)] = in[0];
+
     if (s.first_padding_block)
     {
       buffer[BYTESLICE(i)] = 0x80;
@@ -210,6 +205,7 @@ __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned lo
         buffer[BYTESLICE(tx + (STATEBYTES-8))] = (inlen >> 8*(STATEBYTES-(tx +(STATEBYTES-8)) -1)) & 0xff;
     }
   }
+
 }
 
 
