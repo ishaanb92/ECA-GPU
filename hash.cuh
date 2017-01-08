@@ -123,12 +123,13 @@ __device__ void mixbytes(u32 a[8][COLWORDS], u32 b[8], int s)
     a[i][s] ^= b[(i+3)%8];
 }
 
-__device__ void permutation(u32 *x, int q,u32 *c,u8 *table)
+__device__ void permutation(u32 *x, int q,u32 *c,u8 *table,u8 *shift)
 {
- __shared__ __align__(8) u32 tmp[8];
+  __shared__ __align__(8) u32 tmp[8];
   __shared__ u32 constant;
   __shared__ int i;
   uint32_t tx = threadIdx.x;
+
   for(constant=0; constant<(0x01010101*ROUNDS); constant+=0x01010101)
   {
     if (q==0)
@@ -151,7 +152,7 @@ __device__ void permutation(u32 *x, int q,u32 *c,u8 *table)
       __syncthreads();
       
       if (tx < STATECOLS)
-        ((u8*)x)[i*STATECOLS + tx] = table[((u8*)tmp)[(tx +shiftvalues[q][i])%STATECOLS]];
+        ((u8*)x)[i*STATECOLS + tx] = table[((u8*)tmp)[(tx +shift[8*q+i])%STATECOLS]];
       __syncthreads();
     }
 
@@ -235,6 +236,7 @@ __global__ void hash(char *nonce, unsigned char *in)
 
   __shared__ u32 coloumnconst_shared[4];
   __shared__ u8 table_shared[256];
+  __shared__ u8 shift_shared[2*8];
   
   
   uint32_t bx = blockIdx.x;
@@ -250,6 +252,11 @@ __global__ void hash(char *nonce, unsigned char *in)
     table_shared[i*32 + tx] = S[i*32 + tx];
   
   __syncthreads();
+
+  for (uint32_t i = 0; i < 2; i++) {
+    if (tx < 8)
+      shift_shared[8*i +tx] = shiftvalues[i][tx];
+  }
 
   unsigned char *in_ptr; // per block input ptr
 
@@ -316,11 +323,11 @@ __global__ void hash(char *nonce, unsigned char *in)
     setmessage((u8*)buffer, in_ptr , s, inlen);
     __syncthreads();
     memxor(buffer, ctx, STATEWORDS);
-    permutation(buffer, 0, coloumnconst_shared,table_shared);
+    permutation(buffer, 0, coloumnconst_shared,table_shared,shift_shared);
     memxor(ctx, buffer, STATEWORDS);
     setmessage((u8*)buffer, in_ptr, s, inlen);
     __syncthreads();
-    permutation(buffer, 1, coloumnconst_shared,table_shared);
+    permutation(buffer, 1, coloumnconst_shared,table_shared,shift_shared);
     memxor(ctx, buffer, STATEWORDS);
 
     /* increase message pointer */
@@ -331,7 +338,7 @@ __global__ void hash(char *nonce, unsigned char *in)
   buffer[tx] = ctx[tx];
   __syncthreads();
 
-  permutation(buffer, 0, coloumnconst_shared,table_shared);
+  permutation(buffer, 0, coloumnconst_shared,table_shared,shift_shared);
   memxor(ctx, buffer, STATEWORDS);
 
   /* return truncated hash value */
