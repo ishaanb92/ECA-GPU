@@ -123,7 +123,7 @@ __device__ void mixbytes(u32 a[8][COLWORDS], u32 b[8], int s)
     a[i][s] ^= b[(i+3)%8];
 }
 
-__device__ void permutation(u32 *x, int q)
+__device__ void permutation(u32 *x, int q,u32 *c,u8 *table)
 {
  __shared__ __align__(8) u32 tmp[8];
   __shared__ u32 constant;
@@ -134,7 +134,7 @@ __device__ void permutation(u32 *x, int q)
     if (q==0)
     {
       if (tx < COLWORDS)
-        x[tx] ^= columnconstant[tx]^constant;
+        x[tx] ^= c[tx]^constant;
       __syncthreads();
     }
     else
@@ -142,7 +142,7 @@ __device__ void permutation(u32 *x, int q)
       x[tx] = ~x[tx];
       __syncthreads();
       if (tx < COLWORDS)
-        x[STATEWORDS-COLWORDS+tx] ^= columnconstant[tx]^constant;
+        x[STATEWORDS-COLWORDS+tx] ^= c[tx]^constant;
       __syncthreads();
     }
     for (i=0; i<8; i++) {
@@ -151,7 +151,7 @@ __device__ void permutation(u32 *x, int q)
       __syncthreads();
       
       if (tx < STATECOLS)
-        ((u8*)x)[i*STATECOLS + tx] = S[((u8*)tmp)[(tx +shiftvalues[q][i])%STATECOLS]];
+        ((u8*)x)[i*STATECOLS + tx] = table[((u8*)tmp)[(tx +shiftvalues[q][i])%STATECOLS]];
       __syncthreads();
     }
 
@@ -232,10 +232,25 @@ __global__ void hash(char *nonce, unsigned char *in)
   rlen = inlen;
 
   __shared__ unsigned char base[UNIQUE_INPUT_SIZE];
+
+  __shared__ u32 coloumnconst_shared[4];
+  __shared__ u8 table_shared[256];
+  
   
   uint32_t bx = blockIdx.x;
   uint32_t tx = threadIdx.x;
+
   
+  if (tx < 4) {
+    coloumnconst_shared[tx] = columnconstant[tx];
+  }
+  __syncthreads();
+
+  for (uint32_t i = 0; i < 256/32; i++)
+    table_shared[i*32 + tx] = S[i*32 + tx];
+  
+  __syncthreads();
+
   unsigned char *in_ptr; // per block input ptr
 
   in_ptr = &(in[bx*(INPUT_SIZE+NONCE_SIZE)]);
@@ -246,6 +261,8 @@ __global__ void hash(char *nonce, unsigned char *in)
   for (uint32_t i = 0; i < INPUT_MULT; i ++) {
     in_ptr[i*UNIQUE_INPUT_SIZE + tx + NONCE_SIZE] = base[tx]; // Copy for each block
   }
+
+  __syncthreads();
 
   // For each block, assign a unique a nonce
   in_ptr[0] = nonce_array[bx];
@@ -299,11 +316,11 @@ __global__ void hash(char *nonce, unsigned char *in)
     setmessage((u8*)buffer, in_ptr , s, inlen);
     __syncthreads();
     memxor(buffer, ctx, STATEWORDS);
-    permutation(buffer, 0);
+    permutation(buffer, 0, coloumnconst_shared,table_shared);
     memxor(ctx, buffer, STATEWORDS);
     setmessage((u8*)buffer, in_ptr, s, inlen);
     __syncthreads();
-    permutation(buffer, 1);
+    permutation(buffer, 1, coloumnconst_shared,table_shared);
     memxor(ctx, buffer, STATEWORDS);
 
     /* increase message pointer */
@@ -314,24 +331,14 @@ __global__ void hash(char *nonce, unsigned char *in)
   buffer[tx] = ctx[tx];
   __syncthreads();
 
-  permutation(buffer, 0);
+  permutation(buffer, 0, coloumnconst_shared,table_shared);
   memxor(ctx, buffer, STATEWORDS);
 
   /* return truncated hash value */
-#if 0
-#pragma unroll
-  for (i = STATEBYTES-CRYPTO_BYTES; i < STATEBYTES; i++)
-    out[i-(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(i)];
-#endif
-    for (i = 0; i < 2; i++)
-      out[tx + i*(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(tx + i*(STATEBYTES - CRYPTO_BYTES) + (STATEBYTES-CRYPTO_BYTES))];
-    __syncthreads();
-
-/*
-  // Copy the per-block output
-  for (uint32_t k=0; k < 64; k++)
-    output[bx*64 + k] = out[k];
-*/
+    
+  for (i = 0; i < 2; i++)
+    out[tx + i*(STATEBYTES-CRYPTO_BYTES)] = ((u8*)ctx)[BYTESLICE(tx + i*(STATEBYTES - CRYPTO_BYTES) + (STATEBYTES-CRYPTO_BYTES))];
+  __syncthreads();
 
 
   // For each block check if output hash has a coin
