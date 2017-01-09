@@ -187,6 +187,9 @@ __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned lo
   }
   else { // s.bytes_in_block = 1
     
+    for (uint32_t j = 0; j < STATEBYTES/blockDim.x; j++)
+      buffer[BYTESLICE(j*blockDim.x + tx)] = 0;
+    
     buffer[BYTESLICE(0)] = in[0];
 
     if (s.first_padding_block)
@@ -194,9 +197,6 @@ __device__ void setmessage(u8* buffer, const u8* in, struct state s, unsigned lo
       buffer[BYTESLICE(i)] = 0x80;
       i++;
     }
-
-    for(;i<STATEBYTES;i++)
-      buffer[BYTESLICE(i)] = 0;
 
     if (s.last_padding_block)
     {
